@@ -24,7 +24,7 @@ h1, h2, h3 { font-family: 'Syne', sans-serif; }
     background: #1a1e2a; border: 1px solid #2a2e3d;
     border-radius: 12px; padding: 16px !important; border-left: 3px solid #f97316;
 }
-[data-testid="metric-container"] label { color: #8891a8 !important; font-size: 0.75rem !important; text-transform: uppercase; letter-spacing: 0.1em; }
+[data-testid="metric-container"] label { color: #ffffff !important; font-size: 0.75rem !important; text-transform: uppercase; letter-spacing: 0.1em; }
 [data-testid="metric-container"] [data-testid="stMetricValue"] { color: #f97316 !important; font-family: 'Syne', sans-serif; font-weight: 700; }
 .header-banner {
     background: linear-gradient(135deg, #1a1e2a 0%, #0d1520 100%);
@@ -32,7 +32,7 @@ h1, h2, h3 { font-family: 'Syne', sans-serif; }
     border-radius: 12px; padding: 28px 32px; margin-bottom: 24px;
 }
 .header-banner h1 { color: #ffffff; font-size: 2.2rem; font-weight: 800; margin: 0 0 4px 0; }
-.header-banner p  { color: #8891a8; margin: 0; font-size: 0.95rem; }
+.header-banner p  { color: #ffffff; margin: 0; font-size: 0.95rem; }
 .header-banner .accent { color: #f97316; }
 .section-title {
     font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1.1rem;
@@ -44,14 +44,14 @@ h1, h2, h3 { font-family: 'Syne', sans-serif; }
 .insight-card.amber { border-left: 4px solid #f59e0b; }
 .insight-card.blue  { border-left: 4px solid #3b82f6; }
 .insight-card h4 { color: #ffffff; margin: 0 0 8px 0; font-size: 1rem; }
-.insight-card p  { color: #8891a8; margin: 0; font-size: 0.88rem; line-height: 1.6; }
+.insight-card p  { color: #ffffff; margin: 0; font-size: 0.88rem; line-height: 1.6; }
 .badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 10px; }
 .badge-red   { background: #ef44441a; color: #ef4444; }
 .badge-amber { background: #f59e0b1a; color: #f59e0b; }
 .badge-blue  { background: #3b82f61a; color: #3b82f6; }
-.alert-box { background: #ef44441a; border: 1px solid #ef444433; border-left: 4px solid #ef4444; border-radius: 8px; padding: 12px 16px; color: #fca5a5; font-size: 0.88rem; margin-top: 12px; }
+.alert-box { background: #ef44441a; border: 1px solid #ef444433; border-left: 4px solid #ef4444; border-radius: 8px; padding: 12px 16px; color: #ffffff; font-size: 0.88rem; margin-top: 12px; }
 .stTabs [data-baseweb="tab-list"] { gap: 4px; background: #13161e; border-radius: 10px; padding: 6px; border: 1px solid #2a2e3d; }
-.stTabs [data-baseweb="tab"] { border-radius: 7px; padding: 8px 20px; font-weight: 600; font-size: 0.85rem; color: #8891a8 !important; background: transparent !important; }
+.stTabs [data-baseweb="tab"] { border-radius: 7px; padding: 8px 20px; font-weight: 600; font-size: 0.85rem; color: #ffffff !important; background: transparent !important; }
 .stTabs [aria-selected="true"] { background: #f97316 !important; color: #ffffff !important; }
 </style>
 """, unsafe_allow_html=True)
@@ -64,8 +64,8 @@ PLOTLY_LAYOUT = dict(
     paper_bgcolor="#1a1e2a", plot_bgcolor="#13161e",
     font_color="#e8e8e8", font_family="DM Sans",
     margin=dict(l=48, r=24, t=48, b=48),
-    xaxis=dict(gridcolor="#2a2e3d", linecolor="#2a2e3d", tickfont_color="#8891a8"),
-    yaxis=dict(gridcolor="#2a2e3d", linecolor="#2a2e3d", tickfont_color="#8891a8"),
+    xaxis=dict(gridcolor="#2a2e3d", linecolor="#2a2e3d", tickfont_color="#ffffff"),
+    yaxis=dict(gridcolor="#2a2e3d", linecolor="#2a2e3d", tickfont_color="#ffffff"),
 )
 
 REQUIRED_COLS = ["ID", "revolutions", "humidity", "vibration", "x1", "x2", "x3", "x4", "x5"]
@@ -264,8 +264,9 @@ with tab_vis:
         zmid=0, zmin=-1, zmax=1,
         text=np.round(corr.values, 2), texttemplate="%{text}", textfont_size=11,
     ))
-    fig5.update_layout(**PLOTLY_LAYOUT, title="Correlation Matrix — All Numeric Features",
-                       xaxis=dict(**PLOTLY_LAYOUT["xaxis"], tickangle=-35))
+    heatmap_layout = {**PLOTLY_LAYOUT, "title": "Correlation Matrix — All Numeric Features"}
+    heatmap_layout["xaxis"] = dict(**PLOTLY_LAYOUT["xaxis"], tickangle=-35)
+    fig5.update_layout(**heatmap_layout)
     st.plotly_chart(fig5, use_container_width=True)
     vib_corr = corr["vibration"].drop("vibration").sort_values(key=abs, ascending=False)
     top = vib_corr.index[0]
@@ -371,4 +372,4 @@ with tab_eda:
 
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.markdown("<br>", unsafe_allow_html=True)
-st.markdown('<div style="text-align:center;color:#3a3f52;font-size:0.78rem;">TechLift Solutions · Smart Building Data Analytics · CRS Artificial Intelligence — Mathematics for AI-I</div>', unsafe_allow_html=True)
+st.markdown('<div style="text-align:center;color:#ffffff;font-size:0.78rem;">TechLift Solutions · Smart Building Data Analytics · CRS Artificial Intelligence — Mathematics for AI-I</div>', unsafe_allow_html=True)
