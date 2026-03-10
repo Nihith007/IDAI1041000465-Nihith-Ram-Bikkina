@@ -16,6 +16,8 @@ st.set_page_config(
 ORANGE = "#f97316"; AMBER = "#f59e0b"; BLUE = "#3b82f6"
 GREEN  = "#22c55e"; RED   = "#ef4444"; PURPLE = "#a78bfa"
 
+# Base layout — never pass xaxis= or yaxis= alongside **PLOTLY_LAYOUT
+# Instead, always build a copy and override keys before unpacking
 PLOTLY_LAYOUT = dict(
     paper_bgcolor="#1e2230", plot_bgcolor="#161928",
     font=dict(color="#ffffff", family="sans-serif"),
@@ -27,6 +29,12 @@ PLOTLY_LAYOUT = dict(
     title_font=dict(color="#ffffff", size=15),
     legend=dict(bgcolor="#1e2230", bordercolor="#2a2e3d", font=dict(color="#ffffff")),
 )
+
+def layout(**overrides):
+    """Return a copy of PLOTLY_LAYOUT with any keys overridden safely."""
+    d = dict(**PLOTLY_LAYOUT)
+    d.update(overrides)
+    return d
 
 REQUIRED_COLS = ["ID","revolutions","humidity","vibration","x1","x2","x3","x4","x5"]
 
@@ -51,6 +59,7 @@ def load_and_validate(file):
         return None, "File has fewer than 10 valid rows after cleaning."
     return df[REQUIRED_COLS].reset_index(drop=True), ""
 
+# ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.subheader("📂 Data Source")
     uploaded_file = st.file_uploader("Upload dataset (.csv or .xlsx)", type=["csv","xlsx"],
@@ -66,6 +75,7 @@ with st.sidebar:
     st.write("📡 Data sampled at **4 Hz** during peak evening hours.")
     st.write("🎓 CRS: Artificial Intelligence — Mathematics for AI-I")
 
+# ── Load & filter ─────────────────────────────────────────────────────────────
 using_sample = False
 if uploaded_file is not None:
     df_raw, err = load_and_validate(uploaded_file)
@@ -85,6 +95,7 @@ df_plot   = df.sample(n=min(10000, len(df)), random_state=42).sort_values("ID").
 anomalies = df[df.vibration >= vib_threshold]
 numeric_cols = ["revolutions","humidity","vibration","x1","x2","x3","x4","x5"]
 
+# ── Header ────────────────────────────────────────────────────────────────────
 st.title("🏢 TechLift Solutions")
 src = "Bundled dataset (112,001 rows)" if using_sample else "Uploaded file"
 st.write(f"Smart Elevator Movement Visualization  |  Predictive Maintenance  |  **{len(df):,}** samples  |  {src}")
@@ -92,6 +103,7 @@ st.divider()
 if using_sample:
     st.info("Loaded with the real elevator sensor dataset (112,001 rows). Upload a different file in the sidebar if needed.", icon="ℹ️")
 
+# ── KPIs ──────────────────────────────────────────────────────────────────────
 c1,c2,c3,c4,c5 = st.columns(5)
 c1.metric("Avg Vibration",   f"{df.vibration.mean():.2f}",   f"std {df.vibration.std():.2f}")
 c2.metric("Avg Revolutions", f"{df.revolutions.mean():.2f}", f"std {df.revolutions.std():.2f}")
@@ -103,20 +115,21 @@ st.divider()
 tab_vis, tab_insights, tab_data, tab_eda = st.tabs([
     "📊 Visualizations","💡 Insights & Reporting","📋 Raw Data","🔬 EDA Summary"])
 
-# ══ TAB 1: VISUALIZATIONS ════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 1 — VISUALIZATIONS
+# ══════════════════════════════════════════════════════════════════════════════
 with tab_vis:
     st.write("Charts use up to 10,000 sampled points for performance. All KPIs and stats use the full dataset.")
 
-    # Chart 1: Vibration — Crypto-style volatility chart
+    # ── Chart 1: Candlestick volatility ───────────────────────────────────────
     st.subheader("1 · Vibration Volatility Chart")
     st.write(
         "Crypto-style candlestick chart — each candle covers 500 sensor readings. "
         "Green candles = vibration rose in that window. Red candles = vibration fell. "
-        "The shaded band shows ±1 std deviation (volatility envelope). "
-        "Spikes above the threshold are marked individually."
+        "Orange shaded band = Bollinger volatility envelope (±1.5σ rolling). "
+        "Red dots = individual anomaly spikes above the alert threshold."
     )
 
-    # Build OHLC from full df (not sample) — window of 500 readings per candle
     WINDOW = 500
     df_ohlc = df.copy()
     df_ohlc["win"] = df_ohlc["ID"] // WINDOW
@@ -129,104 +142,77 @@ with tab_vis:
         std=("vibration","std"),
         x=("ID","mean"),
     ).reset_index()
-    candles["std"] = candles["std"].fillna(0)
-    candle_color = ["#22c55e" if r.close >= r.open else "#ef4444" for _, r in candles.iterrows()]
-
-    # Rolling 10-candle Bollinger-style bands on mean
+    candles["std"]       = candles["std"].fillna(0)
     candles["roll_mean"] = candles["mean"].rolling(10, min_periods=1).mean()
     candles["roll_std"]  = candles["mean"].rolling(10, min_periods=1).std().fillna(0)
     candles["upper"]     = candles["roll_mean"] + 1.5 * candles["roll_std"]
     candles["lower"]     = (candles["roll_mean"] - 1.5 * candles["roll_std"]).clip(lower=0)
+    candle_color = ["#22c55e" if r.close >= r.open else "#ef4444" for _, r in candles.iterrows()]
 
     fig1 = go.Figure()
-
     # Bollinger band fill
     fig1.add_trace(go.Scatter(
         x=list(candles["x"]) + list(candles["x"])[::-1],
         y=list(candles["upper"]) + list(candles["lower"])[::-1],
-        fill="toself",
-        fillcolor="rgba(249,115,22,0.10)",
+        fill="toself", fillcolor="rgba(249,115,22,0.10)",
         line=dict(color="rgba(0,0,0,0)"),
-        name="Volatility band (±1.5σ)",
-        showlegend=True,
-    ))
-
-    # Upper and lower band lines
+        name="Volatility band (±1.5σ)", showlegend=True))
     fig1.add_trace(go.Scatter(
-        x=candles["x"], y=candles["upper"],
-        mode="lines", name="Upper band",
+        x=candles["x"], y=candles["upper"], mode="lines",
         line=dict(color="rgba(249,115,22,0.45)", width=1, dash="dot"),
         showlegend=False))
     fig1.add_trace(go.Scatter(
-        x=candles["x"], y=candles["lower"],
-        mode="lines", name="Lower band",
+        x=candles["x"], y=candles["lower"], mode="lines",
         line=dict(color="rgba(249,115,22,0.45)", width=1, dash="dot"),
         showlegend=False))
-
-    # Rolling mean line
     fig1.add_trace(go.Scatter(
-        x=candles["x"], y=candles["roll_mean"],
-        mode="lines", name="Rolling mean (10-window)",
+        x=candles["x"], y=candles["roll_mean"], mode="lines",
+        name="Rolling mean (10-window)",
         line=dict(color=AMBER, width=1.5)))
-
-    # Candlesticks — wicks
+    # Wicks
     for _, r in candles.iterrows():
         col = "#22c55e" if r.close >= r.open else "#ef4444"
-        fig1.add_shape(type="line",
-            x0=r.x, x1=r.x, y0=r.low, y1=r.high,
-            line=dict(color=col, width=1))
-
-    # Candlestick bodies
+        fig1.add_shape(type="line", x0=r.x, x1=r.x, y0=r.low, y1=r.high,
+                       line=dict(color=col, width=1))
+    # Bodies
     fig1.add_trace(go.Bar(
         x=candles["x"],
         y=(candles["close"] - candles["open"]).abs(),
         base=candles[["open","close"]].min(axis=1),
-        marker_color=candle_color,
-        marker_line_color=candle_color,
-        marker_line_width=0.5,
-        opacity=0.85,
-        width=WINDOW * 0.6,
-        name="Candle (OHLC per 500 readings)",
-    ))
-
-    # Anomaly spikes on original data (df, not candles)
+        marker_color=candle_color, marker_line_color=candle_color,
+        marker_line_width=0.5, opacity=0.85, width=WINDOW * 0.6,
+        name="Candle (OHLC per 500 readings)"))
+    # Anomaly dots
     anom_full = df[df.vibration >= vib_threshold]
     fig1.add_trace(go.Scatter(
-        x=anom_full["ID"], y=anom_full["vibration"],
-        mode="markers", name=f"Anomaly >= {vib_threshold}",
-        marker=dict(color=RED, size=4, symbol="circle-open", line=dict(width=1.2)),
-    ))
-
-    # Threshold and overall mean lines
+        x=anom_full["ID"], y=anom_full["vibration"], mode="markers",
+        name=f"Anomaly >= {vib_threshold}",
+        marker=dict(color=RED, size=4, symbol="circle-open", line=dict(width=1.2))))
     fig1.add_hline(y=vib_threshold, line_dash="dot", line_color=RED,
                    annotation_text=f"Alert threshold ({vib_threshold})",
                    annotation_font_color=RED, annotation_position="top right")
     fig1.add_hline(y=float(df.vibration.mean()), line_dash="dash", line_color="#888888",
                    annotation_text=f"Overall mean ({df.vibration.mean():.1f})",
                    annotation_font_color="#888888", annotation_position="bottom right")
-
-    fig1.update_layout(
-        **PLOTLY_LAYOUT,
+    fig1.update_layout(layout(
         title="Vibration Volatility — Candlestick Chart (500-Reading Windows) with Bollinger Bands",
         xaxis_title="Sample ID (time index)",
         yaxis_title="Vibration (units)",
-        yaxis=dict(**PLOTLY_LAYOUT["yaxis"], range=[0, 110]),
-        barmode="overlay",
-        bargap=0,
-    )
+        yaxis=dict(gridcolor="#2a2e3d", linecolor="#2a2e3d",
+                   tickfont=dict(color="#ffffff"), title_font=dict(color="#ffffff"), range=[0, 110]),
+        barmode="overlay", bargap=0,
+    ))
     st.plotly_chart(fig1, use_container_width=True)
     st.info(f"{len(anomalies):,} of {len(df):,} readings ({len(anomalies)/len(df)*100:.1f}%) exceed threshold {vib_threshold}. Green candles = rising vibration window. Red = falling.")
     st.divider()
 
-    # Chart 2: Vibration Distribution — multimodal with correct bins
+    # ── Chart 2: Vibration Distribution ───────────────────────────────────────
     st.subheader("2 · Vibration Distribution")
     st.write(
         "Vibration follows a **multimodal distribution** with four distinct clusters: "
         "**Low (2–10, 33.2%)**, **Medium-Low (10–40, 31.1%)**, **Medium-High (40–70, 14.6%)** "
-        "and **Anomaly zone (>=70, 4.6%)**. "
-        "The white KDE curve shows the overall density shape."
+        "and **Anomaly zone (≥70, 4.6%)**. White KDE curve shows the overall density shape."
     )
-
     vib_vals  = df["vibration"].values
     bin_width = 2
     bins      = np.arange(0, 102, bin_width)
@@ -240,54 +226,50 @@ with tab_vis:
         else:                  return ORANGE
 
     bar_colors = [vib_color(c) for c in centers]
+    kde_vib    = stats.gaussian_kde(vib_vals, bw_method=0.08)
+    x_kde      = np.linspace(0, 100, 500)
+    y_kde      = kde_vib(x_kde) * len(vib_vals) * bin_width
 
-    kde_vib   = stats.gaussian_kde(vib_vals, bw_method=0.08)
-    x_kde     = np.linspace(0, 100, 500)
-    y_kde     = kde_vib(x_kde) * len(vib_vals) * bin_width
-
-    fig_vib = go.Figure()
-    fig_vib.add_trace(go.Bar(
+    fig2 = go.Figure()
+    fig2.add_trace(go.Bar(
         x=centers, y=counts, width=bin_width * 0.92,
         marker_color=bar_colors, opacity=0.85, name="Count per bin"))
-    fig_vib.add_trace(go.Scatter(
+    fig2.add_trace(go.Scatter(
         x=x_kde, y=y_kde, mode="lines", name="Density curve",
         line=dict(color="#ffffff", width=2.5)))
-    fig_vib.add_vrect(x0=0, x1=10,
-        fillcolor="rgba(249,115,22,0.06)", line_width=0,
+    fig2.add_vrect(x0=0,  x1=10, fillcolor="rgba(249,115,22,0.06)", line_width=0,
         annotation_text="Low", annotation_position="top left",
         annotation_font_color="#aaaaaa", annotation_font_size=10)
-    fig_vib.add_vrect(x0=10, x1=40,
-        fillcolor="rgba(249,115,22,0.04)", line_width=0,
+    fig2.add_vrect(x0=10, x1=40, fillcolor="rgba(249,115,22,0.04)", line_width=0,
         annotation_text="Med-Low", annotation_position="top left",
         annotation_font_color="#aaaaaa", annotation_font_size=10)
-    fig_vib.add_vrect(x0=40, x1=vib_threshold,
-        fillcolor="rgba(245,158,11,0.06)", line_width=0,
+    fig2.add_vrect(x0=40, x1=vib_threshold, fillcolor="rgba(245,158,11,0.06)", line_width=0,
         annotation_text="Med-High", annotation_position="top left",
         annotation_font_color="#aaaaaa", annotation_font_size=10)
-    fig_vib.add_vrect(x0=vib_threshold, x1=100,
-        fillcolor="rgba(239,68,68,0.10)", line_width=0,
+    fig2.add_vrect(x0=vib_threshold, x1=100, fillcolor="rgba(239,68,68,0.10)", line_width=0,
         annotation_text="Anomaly Zone", annotation_position="top right",
         annotation_font_color=RED, annotation_font_size=10)
-    fig_vib.add_vline(x=vib_threshold, line_dash="dot", line_color=RED,
-                      annotation_text=f"Threshold ({vib_threshold})",
-                      annotation_font_color=RED, annotation_position="top left")
-    fig_vib.add_vline(x=float(df.vibration.mean()), line_dash="dash", line_color=AMBER,
-                      annotation_text=f"Mean ({df.vibration.mean():.1f})",
-                      annotation_font_color=AMBER, annotation_position="bottom right")
-    fig_vib.add_vline(x=float(df.vibration.median()), line_dash="dash", line_color=GREEN,
-                      annotation_text=f"Median ({df.vibration.median():.1f})",
-                      annotation_font_color=GREEN, annotation_position="bottom left")
-    vib_layout = dict(**PLOTLY_LAYOUT)
-    vib_layout["xaxis"] = dict(**PLOTLY_LAYOUT["xaxis"], range=[0, 101], dtick=10)
-    fig_vib.update_layout(
-        **vib_layout,
+    fig2.add_vline(x=vib_threshold, line_dash="dot", line_color=RED,
+        annotation_text=f"Threshold ({vib_threshold})",
+        annotation_font_color=RED, annotation_position="top left")
+    fig2.add_vline(x=float(df.vibration.mean()), line_dash="dash", line_color=AMBER,
+        annotation_text=f"Mean ({df.vibration.mean():.1f})",
+        annotation_font_color=AMBER, annotation_position="bottom right")
+    fig2.add_vline(x=float(df.vibration.median()), line_dash="dash", line_color=GREEN,
+        annotation_text=f"Median ({df.vibration.median():.1f})",
+        annotation_font_color=GREEN, annotation_position="bottom left")
+    fig2.update_layout(layout(
         title="Vibration Distribution — Multimodal Pattern with 4 Distinct Operating Clusters",
-        xaxis_title="Vibration (units)", yaxis_title="Number of readings",
-        bargap=0.04)
-    st.plotly_chart(fig_vib, use_container_width=True)
-
+        xaxis_title="Vibration (units)",
+        yaxis_title="Number of readings",
+        xaxis=dict(gridcolor="#2a2e3d", linecolor="#2a2e3d",
+                   tickfont=dict(color="#ffffff"), title_font=dict(color="#ffffff"),
+                   range=[0, 101], dtick=10),
+        bargap=0.04,
+    ))
+    st.plotly_chart(fig2, use_container_width=True)
     st.dataframe(pd.DataFrame({
-        "Zone": ["Low (2–10)", "Medium-Low (10–40)", "Medium-High (40–70)", f"Anomaly (>={vib_threshold})"],
+        "Zone": ["Low (2–10)", "Medium-Low (10–40)", "Medium-High (40–70)", f"Anomaly (≥{vib_threshold})"],
         "Count": [
             int(((df.vibration >= 2)  & (df.vibration < 10)).sum()),
             int(((df.vibration >= 10) & (df.vibration < 40)).sum()),
@@ -309,9 +291,9 @@ with tab_vis:
     }), use_container_width=True, hide_index=True)
     st.divider()
 
-    # Chart 3: Humidity & Revolutions KDE
+    # ── Chart 3: Humidity & Revolutions KDE ───────────────────────────────────
     st.subheader("3 · Humidity & Revolutions Distribution")
-    st.write("Smooth density curves (KDE) for humidity and revolutions. Humidity peaks around 74.1%. Revolutions show a bimodal pattern.")
+    st.write("Smooth KDE density curves. Humidity peaks around 74.1%. Revolutions show a bimodal pattern reflecting two door usage levels.")
 
     col_a, col_b = st.columns(2)
     with col_a:
@@ -319,101 +301,108 @@ with tab_vis:
         kde_hum  = stats.gaussian_kde(hum_vals, bw_method=0.15)
         x_hum    = np.linspace(hum_vals.min()-0.1, hum_vals.max()+0.1, 500)
         y_hum    = kde_hum(x_hum)
-        fig_hum  = go.Figure()
-        fig_hum.add_trace(go.Scatter(x=x_hum, y=y_hum, mode="lines", name="Humidity",
+        fig3a = go.Figure()
+        fig3a.add_trace(go.Scatter(x=x_hum, y=y_hum, mode="lines", name="Humidity",
             line=dict(color=BLUE, width=2.5), fill="tozeroy", fillcolor="rgba(59,130,246,0.2)"))
-        fig_hum.add_vline(x=float(df.humidity.mean()), line_dash="dash", line_color=AMBER,
+        fig3a.add_vline(x=float(df.humidity.mean()), line_dash="dash", line_color=AMBER,
             annotation_text=f"Mean ({df.humidity.mean():.2f}%)", annotation_font_color=AMBER)
-        fig_hum.update_layout(**PLOTLY_LAYOUT,
+        fig3a.update_layout(layout(
             title=f"Humidity Density — {hum_vals.min():.1f}% to {hum_vals.max():.1f}%",
             xaxis_title="Humidity (%)", yaxis_title="Density",
-            xaxis=dict(**PLOTLY_LAYOUT["xaxis"], tickformat=".1f",
-                       range=[hum_vals.min()-0.1, hum_vals.max()+0.1]))
-        st.plotly_chart(fig_hum, use_container_width=True)
+            xaxis=dict(gridcolor="#2a2e3d", linecolor="#2a2e3d",
+                       tickfont=dict(color="#ffffff"), title_font=dict(color="#ffffff"),
+                       tickformat=".1f",
+                       range=[hum_vals.min()-0.1, hum_vals.max()+0.1]),
+        ))
+        st.plotly_chart(fig3a, use_container_width=True)
 
     with col_b:
         rev_vals = df["revolutions"].values
         kde_rev  = stats.gaussian_kde(rev_vals, bw_method=0.15)
         x_rev    = np.linspace(rev_vals.min()-2, rev_vals.max()+2, 500)
         y_rev    = kde_rev(x_rev)
-        fig_rev  = go.Figure()
-        fig_rev.add_trace(go.Scatter(x=x_rev, y=y_rev, mode="lines", name="Revolutions",
+        fig3b = go.Figure()
+        fig3b.add_trace(go.Scatter(x=x_rev, y=y_rev, mode="lines", name="Revolutions",
             line=dict(color=AMBER, width=2.5), fill="tozeroy", fillcolor="rgba(245,158,11,0.2)"))
-        fig_rev.add_vline(x=float(df.revolutions.mean()), line_dash="dash", line_color=BLUE,
+        fig3b.add_vline(x=float(df.revolutions.mean()), line_dash="dash", line_color=BLUE,
             annotation_text=f"Mean ({df.revolutions.mean():.1f})", annotation_font_color=BLUE)
-        fig_rev.update_layout(**PLOTLY_LAYOUT,
+        fig3b.update_layout(layout(
             title=f"Revolutions Density — {rev_vals.min():.1f} to {rev_vals.max():.1f}",
-            xaxis_title="Revolutions (door cycles)", yaxis_title="Density")
-        st.plotly_chart(fig_rev, use_container_width=True)
+            xaxis_title="Revolutions (door cycles)", yaxis_title="Density",
+        ))
+        st.plotly_chart(fig3b, use_container_width=True)
     st.divider()
 
-    # Chart 4: Scatter
+    # ── Chart 4: Scatter ───────────────────────────────────────────────────────
     st.subheader("4 · Revolutions vs Vibration")
-    st.write("Each point is one sensor reading coloured by humidity. Dashed red trend line shows the relationship (r = -0.114).")
+    st.write("Each point is one reading coloured by humidity. Dashed red trend line shows the relationship (r = -0.114).")
 
-    fig3 = px.scatter(df_plot, x="revolutions", y="vibration", color="humidity",
+    fig4 = px.scatter(df_plot, x="revolutions", y="vibration", color="humidity",
         color_continuous_scale="Oranges", opacity=0.4,
         labels={"revolutions":"Revolutions (door cycles)",
-                "vibration":"Vibration (units)","humidity":"Humidity (%)"})
+                "vibration":"Vibration (units)", "humidity":"Humidity (%)"})
     z = np.polyfit(df_plot.revolutions, df_plot.vibration, 1)
     x_line = np.linspace(df_plot.revolutions.min(), df_plot.revolutions.max(), 200)
-    fig3.add_trace(go.Scatter(x=x_line, y=np.poly1d(z)(x_line), mode="lines",
+    fig4.add_trace(go.Scatter(x=x_line, y=np.poly1d(z)(x_line), mode="lines",
         name="Trend line", line=dict(color=RED, width=2, dash="dash")))
-    fig3.add_hline(y=vib_threshold, line_dash="dot", line_color=RED,
+    fig4.add_hline(y=vib_threshold, line_dash="dot", line_color=RED,
         annotation_text=f"Alert threshold ({vib_threshold})", annotation_font_color=RED)
-    fig3.update_layout(**PLOTLY_LAYOUT, title="Revolutions vs Vibration (coloured by Humidity)")
-    fig3.update_coloraxes(colorbar_title_text="Humidity %",
+    fig4.update_layout(layout(title="Revolutions vs Vibration (coloured by Humidity)"))
+    fig4.update_coloraxes(colorbar_title_text="Humidity %",
                           colorbar_tickfont_color="#ffffff",
                           colorbar_title_font_color="#ffffff")
-    st.plotly_chart(fig3, use_container_width=True)
+    st.plotly_chart(fig4, use_container_width=True)
     st.divider()
 
-    # Chart 5: Box Plots
+    # ── Chart 5: Box Plots ─────────────────────────────────────────────────────
     st.subheader("5 · Box Plot — Sensor Readings x1 to x5")
-    st.write("x4 and x5 have much larger value scales and are shown separately from x1, x2, x3.")
+    st.write("x4 and x5 have much larger value scales so are shown separately from x1, x2, x3.")
 
     col_b1, col_b2 = st.columns(2)
     with col_b1:
-        fig4a = go.Figure()
+        fig5a = go.Figure()
         for col, color in [("x1",ORANGE),("x2",AMBER),("x3",GREEN)]:
-            fig4a.add_trace(go.Box(y=df_plot[col], name=col, marker_color=color,
+            fig5a.add_trace(go.Box(y=df_plot[col], name=col, marker_color=color,
                                    line_color=color, boxpoints="outliers", marker_size=2))
-        fig4a.update_layout(**PLOTLY_LAYOUT, title="Sensors x1 (temp), x2 (current), x3 (acoustic)",
-                            yaxis_title="Value")
-        st.plotly_chart(fig4a, use_container_width=True)
+        fig5a.update_layout(layout(
+            title="Sensors x1 (temp), x2 (current), x3 (acoustic)", yaxis_title="Value"))
+        st.plotly_chart(fig5a, use_container_width=True)
+
     with col_b2:
-        fig4b = go.Figure()
+        fig5b = go.Figure()
         for col, color in [("x4",BLUE),("x5",PURPLE)]:
-            fig4b.add_trace(go.Box(y=df_plot[col], name=col, marker_color=color,
+            fig5b.add_trace(go.Box(y=df_plot[col], name=col, marker_color=color,
                                    line_color=color, boxpoints="outliers", marker_size=2))
-        fig4b.update_layout(**PLOTLY_LAYOUT, title="Sensors x4 (pressure), x5 (acceleration)",
-                            yaxis_title="Value")
-        st.plotly_chart(fig4b, use_container_width=True)
+        fig5b.update_layout(layout(
+            title="Sensors x4 (pressure), x5 (acceleration)", yaxis_title="Value"))
+        st.plotly_chart(fig5b, use_container_width=True)
     st.divider()
 
-    # Chart 6: Correlation Heatmap
+    # ── Chart 6: Correlation Heatmap ───────────────────────────────────────────
     st.subheader("6 · Correlation Heatmap")
     st.write("Pearson r between all features. Orange = positive, blue = negative. x4 has the strongest correlation with vibration (r = -0.141).")
 
     corr = df[numeric_cols].corr()
-    fig5 = go.Figure(go.Heatmap(
+    fig6 = go.Figure(go.Heatmap(
         z=corr.values, x=corr.columns.tolist(), y=corr.index.tolist(),
         colorscale=[[0,"#1e3a5f"],[0.5,"#1a1e2a"],[1,"#f97316"]],
         zmid=0, zmin=-1, zmax=1,
         text=np.round(corr.values, 2), texttemplate="%{text}",
         textfont=dict(size=11, color="#ffffff"),
         colorbar=dict(tickfont=dict(color="#ffffff"), title_font=dict(color="#ffffff"))))
-    hm_layout = dict(**PLOTLY_LAYOUT)
-    hm_layout["xaxis"] = dict(gridcolor="#2a2e3d", linecolor="#2a2e3d",
-                               tickfont=dict(color="#ffffff"),
-                               title_font=dict(color="#ffffff"), tickangle=-35)
-    hm_layout["title"] = "Correlation Matrix — All Numeric Features"
-    fig5.update_layout(**hm_layout)
-    st.plotly_chart(fig5, use_container_width=True)
+    fig6.update_layout(layout(
+        title="Correlation Matrix — All Numeric Features",
+        xaxis=dict(gridcolor="#2a2e3d", linecolor="#2a2e3d",
+                   tickfont=dict(color="#ffffff"), title_font=dict(color="#ffffff"),
+                   tickangle=-35),
+    ))
+    st.plotly_chart(fig6, use_container_width=True)
     vib_corr = corr["vibration"].drop("vibration").sort_values(key=abs, ascending=False)
     st.success(f"Strongest correlation with vibration: {vib_corr.index[0]} (r = {vib_corr.iloc[0]:.3f})  |  Second: {vib_corr.index[1]} (r = {vib_corr.iloc[1]:.3f})")
 
-# ══ TAB 2: INSIGHTS ══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 2 — INSIGHTS
+# ══════════════════════════════════════════════════════════════════════════════
 with tab_insights:
     st.subheader("Key Insights & Recommendations")
     st.write("Stage 4: Findings from the real elevator sensor dataset (112,001 readings at 4 Hz).")
@@ -460,7 +449,6 @@ with tab_insights:
         "Together, x4 and x5 form a two-sensor early warning system: a falling x4 combined with a rising x5 "
         "reliably precedes high vibration events."
     )
-
     st.divider()
     st.subheader("Business Impact Summary")
     st.dataframe(pd.DataFrame({
@@ -487,7 +475,9 @@ with tab_insights:
         ],
     }), use_container_width=True, hide_index=True)
 
-# ══ TAB 3: RAW DATA ══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 3 — RAW DATA
+# ══════════════════════════════════════════════════════════════════════════════
 with tab_data:
     st.subheader("Dataset Preview")
 
@@ -521,7 +511,9 @@ with tab_data:
     st.download_button("⬇️ Download filtered dataset as CSV",
                        df.to_csv(index=False).encode(), "elevator_filtered.csv", "text/csv")
 
-# ══ TAB 4: EDA SUMMARY ═══════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 4 — EDA SUMMARY
+# ══════════════════════════════════════════════════════════════════════════════
 with tab_eda:
     st.subheader("Stage 2: Data Understanding & Cleaning Report")
 
@@ -578,12 +570,16 @@ with tab_eda:
         marker_color=[ORANGE if v > 0 else BLUE for v in vib_corr_df["Pearson r"]],
         text=vib_corr_df["Pearson r"].round(3), textposition="outside",
         textfont=dict(color="#ffffff")))
-    fig_bar.update_layout(**PLOTLY_LAYOUT,
-                          title="Feature Correlation with Vibration (Target Variable)",
-                          xaxis_title="Feature", yaxis_title="Pearson r", showlegend=False,
-                          yaxis=dict(**PLOTLY_LAYOUT["yaxis"], range=[-0.22, 0.22]))
+    fig_bar.update_layout(layout(
+        title="Feature Correlation with Vibration (Target Variable)",
+        xaxis_title="Feature", yaxis_title="Pearson r", showlegend=False,
+        yaxis=dict(gridcolor="#2a2e3d", linecolor="#2a2e3d",
+                   tickfont=dict(color="#ffffff"), title_font=dict(color="#ffffff"),
+                   range=[-0.22, 0.22]),
+    ))
     st.plotly_chart(fig_bar, use_container_width=True)
     st.write("Orange = positive correlation. Blue = negative. Weak correlations confirm a multi-sensor approach is needed.")
 
+# ── Footer ────────────────────────────────────────────────────────────────────
 st.divider()
 st.write("TechLift Solutions  |  Smart Building Data Analytics  |  CRS Artificial Intelligence — Mathematics for AI-I")
