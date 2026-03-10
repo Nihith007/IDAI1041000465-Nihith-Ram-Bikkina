@@ -33,7 +33,7 @@ REQUIRED_COLS = ["ID","revolutions","humidity","vibration","x1","x2","x3","x4","
 @st.cache_data
 def load_bundled_data():
     base = Path(__file__).parent
-    return pd.read_csv(base / "cleaned_elevator.csv")
+    return pd.read_csv(base / "cleaned_missions.csv")
 
 def load_and_validate(file):
     try:
@@ -87,6 +87,8 @@ numeric_cols = ["revolutions","humidity","vibration","x1","x2","x3","x4","x5"]
 
 st.title("🏢 TechLift Solutions")
 src = "Bundled dataset (112,001 rows)" if using_sample else "Uploaded file"
+st.write(f"Smart Elevator Movement Visualization  |  Predictive Maintenance  |  **{len(df):,}** samples  |  {src}")
+st.divider()
 if using_sample:
     st.info("Loaded with the real elevator sensor dataset (112,001 rows). Upload a different file in the sidebar if needed.", icon="ℹ️")
 
@@ -105,39 +107,115 @@ tab_vis, tab_insights, tab_data, tab_eda = st.tabs([
 with tab_vis:
     st.write("Charts use up to 10,000 sampled points for performance. All KPIs and stats use the full dataset.")
 
-    # Chart 1: Vibration Time Series
-    st.subheader("1 · Vibration Time Series")
-    st.write("Vibration readings over time. Red markers highlight anomalous spikes. Mean line (amber) and threshold line (red) are shown.")
+    # Chart 1: Vibration — Crypto-style volatility chart
+    st.subheader("1 · Vibration Volatility Chart")
+    st.write(
+        "Crypto-style candlestick chart — each candle covers 500 sensor readings. "
+        "Green candles = vibration rose in that window. Red candles = vibration fell. "
+        "The shaded band shows ±1 std deviation (volatility envelope). "
+        "Spikes above the threshold are marked individually."
+    )
 
-    anom_plot = df_plot[df_plot.vibration >= vib_threshold]
+    # Build OHLC from full df (not sample) — window of 500 readings per candle
+    WINDOW = 500
+    df_ohlc = df.copy()
+    df_ohlc["win"] = df_ohlc["ID"] // WINDOW
+    candles = df_ohlc.groupby("win").agg(
+        open=("vibration","first"),
+        high=("vibration","max"),
+        low=("vibration","min"),
+        close=("vibration","last"),
+        mean=("vibration","mean"),
+        std=("vibration","std"),
+        x=("ID","mean"),
+    ).reset_index()
+    candles["std"] = candles["std"].fillna(0)
+    candle_color = ["#22c55e" if r.close >= r.open else "#ef4444" for _, r in candles.iterrows()]
+
+    # Rolling 10-candle Bollinger-style bands on mean
+    candles["roll_mean"] = candles["mean"].rolling(10, min_periods=1).mean()
+    candles["roll_std"]  = candles["mean"].rolling(10, min_periods=1).std().fillna(0)
+    candles["upper"]     = candles["roll_mean"] + 1.5 * candles["roll_std"]
+    candles["lower"]     = (candles["roll_mean"] - 1.5 * candles["roll_std"]).clip(lower=0)
+
     fig1 = go.Figure()
+
+    # Bollinger band fill
     fig1.add_trace(go.Scatter(
-        x=df_plot.ID, y=df_plot.vibration, mode="lines", name="Vibration",
-        line=dict(color=ORANGE, width=0.8),
-        fill="tozeroy", fillcolor="rgba(249,115,22,0.06)"))
+        x=list(candles["x"]) + list(candles["x"])[::-1],
+        y=list(candles["upper"]) + list(candles["lower"])[::-1],
+        fill="toself",
+        fillcolor="rgba(249,115,22,0.10)",
+        line=dict(color="rgba(0,0,0,0)"),
+        name="Volatility band (±1.5σ)",
+        showlegend=True,
+    ))
+
+    # Upper and lower band lines
     fig1.add_trace(go.Scatter(
-        x=anom_plot.ID, y=anom_plot.vibration, mode="markers",
-        name=f"Anomaly >= {vib_threshold}",
-        marker=dict(color=RED, size=5, symbol="circle-open", line=dict(width=1.5))))
+        x=candles["x"], y=candles["upper"],
+        mode="lines", name="Upper band",
+        line=dict(color="rgba(249,115,22,0.45)", width=1, dash="dot"),
+        showlegend=False))
+    fig1.add_trace(go.Scatter(
+        x=candles["x"], y=candles["lower"],
+        mode="lines", name="Lower band",
+        line=dict(color="rgba(249,115,22,0.45)", width=1, dash="dot"),
+        showlegend=False))
+
+    # Rolling mean line
+    fig1.add_trace(go.Scatter(
+        x=candles["x"], y=candles["roll_mean"],
+        mode="lines", name="Rolling mean (10-window)",
+        line=dict(color=AMBER, width=1.5)))
+
+    # Candlesticks — wicks
+    for _, r in candles.iterrows():
+        col = "#22c55e" if r.close >= r.open else "#ef4444"
+        fig1.add_shape(type="line",
+            x0=r.x, x1=r.x, y0=r.low, y1=r.high,
+            line=dict(color=col, width=1))
+
+    # Candlestick bodies
+    fig1.add_trace(go.Bar(
+        x=candles["x"],
+        y=(candles["close"] - candles["open"]).abs(),
+        base=candles[["open","close"]].min(axis=1),
+        marker_color=candle_color,
+        marker_line_color=candle_color,
+        marker_line_width=0.5,
+        opacity=0.85,
+        width=WINDOW * 0.6,
+        name="Candle (OHLC per 500 readings)",
+    ))
+
+    # Anomaly spikes on original data (df, not candles)
+    anom_full = df[df.vibration >= vib_threshold]
+    fig1.add_trace(go.Scatter(
+        x=anom_full["ID"], y=anom_full["vibration"],
+        mode="markers", name=f"Anomaly >= {vib_threshold}",
+        marker=dict(color=RED, size=4, symbol="circle-open", line=dict(width=1.2)),
+    ))
+
+    # Threshold and overall mean lines
     fig1.add_hline(y=vib_threshold, line_dash="dot", line_color=RED,
                    annotation_text=f"Alert threshold ({vib_threshold})",
-                   annotation_font_color="#ffffff", annotation_position="top right")
-    fig1.add_hline(y=float(df.vibration.mean()), line_dash="dash", line_color=AMBER,
-                   annotation_text=f"Mean ({df.vibration.mean():.1f})",
-                   annotation_font_color=AMBER, annotation_position="bottom right")
-    fig1.update_layout(
-    **PLOTLY_LAYOUT,
-    title="Vibration Over Time — Elevator Health Indicator",
-    xaxis_title="Sample ID (time index)",
-    yaxis_title="Vibration (units)"
-    )
-    
-    fig1.update_layout(
-        yaxis={**PLOTLY_LAYOUT["yaxis"], "range":[0,105]}
-    )
+                   annotation_font_color=RED, annotation_position="top right")
+    fig1.add_hline(y=float(df.vibration.mean()), line_dash="dash", line_color="#888888",
+                   annotation_text=f"Overall mean ({df.vibration.mean():.1f})",
+                   annotation_font_color="#888888", annotation_position="bottom right")
 
+    fig1.update_layout(
+        **PLOTLY_LAYOUT,
+        title="Vibration Volatility — Candlestick Chart (500-Reading Windows) with Bollinger Bands",
+        xaxis_title="Sample ID (time index)",
+        yaxis_title="Vibration (units)",
+        yaxis=dict(**PLOTLY_LAYOUT["yaxis"], range=[0, 110]),
+        barmode="overlay",
+        bargap=0,
+    )
     st.plotly_chart(fig1, use_container_width=True)
-    st.info(f"{len(anomalies):,} of {len(df):,} readings ({len(anomalies)/len(df)*100:.1f}%) exceed threshold {vib_threshold}.")
+    st.info(f"{len(anomalies):,} of {len(df):,} readings ({len(anomalies)/len(df)*100:.1f}%) exceed threshold {vib_threshold}. Green candles = rising vibration window. Red = falling.")
     st.divider()
 
     # Chart 2: Vibration Distribution — multimodal with correct bins
@@ -199,11 +277,12 @@ with tab_vis:
     fig_vib.add_vline(x=float(df.vibration.median()), line_dash="dash", line_color=GREEN,
                       annotation_text=f"Median ({df.vibration.median():.1f})",
                       annotation_font_color=GREEN, annotation_position="bottom left")
+    vib_layout = dict(**PLOTLY_LAYOUT)
+    vib_layout["xaxis"] = dict(**PLOTLY_LAYOUT["xaxis"], range=[0, 101], dtick=10)
     fig_vib.update_layout(
-        **PLOTLY_LAYOUT,
+        **vib_layout,
         title="Vibration Distribution — Multimodal Pattern with 4 Distinct Operating Clusters",
         xaxis_title="Vibration (units)", yaxis_title="Number of readings",
-        xaxis=dict(**PLOTLY_LAYOUT["xaxis"], range=[0, 101], dtick=10),
         bargap=0.04)
     st.plotly_chart(fig_vib, use_container_width=True)
 
@@ -454,7 +533,7 @@ with tab_eda:
         st.write(f"- Missing values: {df_raw.isnull().sum().sum()} — dataset is complete ✅")
         st.write(f"- Duplicate rows: {df_raw.duplicated().sum()} — all samples unique ✅")
         st.write("- All numeric columns: correctly typed as float64 / int64 ✅")
-        st.write(f"- Source: {'Uploaded file' if not using_sample else 'cleaned_elevator.csv'}")
+        st.write(f"- Source: {'Uploaded file' if not using_sample else 'cleaned_missions.csv'}")
     with col_r:
         st.write("**Column Descriptions**")
         st.dataframe(pd.DataFrame({
