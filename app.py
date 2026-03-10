@@ -1,9 +1,9 @@
 import streamlit as st
-from pathlib import Path
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
+from pathlib import Path
 
 st.set_page_config(
     page_title="TechLift – Elevator Vibration Analysis",
@@ -12,13 +12,14 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ── Colours ───────────────────────────────────────────────────────────────────
 ORANGE = "#f97316"; AMBER = "#f59e0b"; BLUE = "#3b82f6"
 GREEN  = "#22c55e"; RED   = "#ef4444"; PURPLE = "#a78bfa"
 
 PLOTLY_LAYOUT = dict(
     paper_bgcolor="#1e2230", plot_bgcolor="#161928",
     font=dict(color="#ffffff", family="sans-serif"),
-    margin=dict(l=48, r=24, t=56, b=48),
+    margin=dict(l=56, r=32, t=60, b=56),
     xaxis=dict(gridcolor="#2a2e3d", linecolor="#2a2e3d",
                tickfont=dict(color="#ffffff"), title_font=dict(color="#ffffff")),
     yaxis=dict(gridcolor="#2a2e3d", linecolor="#2a2e3d",
@@ -29,6 +30,7 @@ PLOTLY_LAYOUT = dict(
 
 REQUIRED_COLS = ["ID","revolutions","humidity","vibration","x1","x2","x3","x4","x5"]
 
+# ── Load data ─────────────────────────────────────────────────────────────────
 @st.cache_data
 def load_bundled_data():
     base = Path(__file__).parent
@@ -53,8 +55,9 @@ def load_and_validate(file):
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.subheader("📂 Data Source")
-    uploaded_file = st.file_uploader("Upload dataset (.csv or .xlsx)", type=["csv","xlsx"],
-                                     help="Must contain: ID, revolutions, humidity, vibration, x1-x5")
+    uploaded_file = st.file_uploader("Upload dataset (.csv or .xlsx)",
+                                     type=["csv","xlsx"],
+                                     help="Must contain: ID, revolutions, humidity, vibration, x1–x5")
     st.divider()
     st.subheader("⚙️ Controls")
     vib_threshold = st.slider("Vibration alert threshold", 10, 100, 70)
@@ -66,12 +69,13 @@ with st.sidebar:
     st.write("📡 Data sampled at **4 Hz** during peak evening hours.")
     st.write("🎓 CRS: Artificial Intelligence — Mathematics for AI-I")
 
-# ── Load data ─────────────────────────────────────────────────────────────────
+# ── Load & filter ─────────────────────────────────────────────────────────────
 using_sample = False
 if uploaded_file is not None:
     df_raw, err = load_and_validate(uploaded_file)
     if err:
-        st.error(f"File error: {err}"); st.info("Falling back to bundled dataset.")
+        st.error(f"File error: {err}")
+        st.info("Falling back to bundled dataset.")
         df_raw = load_bundled_data(); using_sample = True
 else:
     df_raw = load_bundled_data(); using_sample = True
@@ -81,17 +85,18 @@ df = df_raw[
     (df_raw.humidity    >= hum_range[0]) & (df_raw.humidity    <= hum_range[1])
 ].reset_index(drop=True)
 
+# Downsample for charts only
 df_plot   = df.sample(n=min(5000, len(df)), random_state=42).sort_values("ID").reset_index(drop=True)
 anomalies = df[df.vibration >= vib_threshold]
 numeric_cols = ["revolutions","humidity","vibration","x1","x2","x3","x4","x5"]
 
 # ── Header ────────────────────────────────────────────────────────────────────
 st.title("🏢 TechLift Solutions")
-src = "Bundled dataset" if using_sample else "Uploaded file"
+src = "Bundled dataset (112,001 rows)" if using_sample else "Uploaded file"
 st.write(f"Smart Elevator Movement Visualization  |  Predictive Maintenance  |  **{len(df):,}** samples  |  {src}")
 st.divider()
 if using_sample:
-    st.info("Loaded with the real elevator sensor dataset (112,001 rows). Upload a different file in the sidebar if needed.", icon="ℹ️")
+    st.info("Loaded with the real elevator sensor dataset. Upload a different file in the sidebar if needed.", icon="ℹ️")
 
 # ── KPIs ──────────────────────────────────────────────────────────────────────
 c1,c2,c3,c4,c5 = st.columns(5)
@@ -106,50 +111,137 @@ st.divider()
 tab_vis, tab_insights, tab_data, tab_eda = st.tabs([
     "📊 Visualizations","💡 Insights & Reporting","📋 Raw Data","🔬 EDA Summary"])
 
-# ══ TAB 1: Visualizations ═════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 1 — VISUALIZATIONS
+# ══════════════════════════════════════════════════════════════════════════════
 with tab_vis:
-    st.write("Charts use up to 5,000 sampled points for performance. Stats use the full dataset.")
+    st.write("Charts use up to 5,000 sampled points for performance. All stats use the full dataset.")
 
-    # 1. Vibration time series
+    # ── Chart 1: Vibration Time Series ───────────────────────────────────────
     st.subheader("1 · Vibration Time Series")
-    st.write("Track vibration changes over time and detect anomalous spikes.")
+    st.write("Track vibration changes over time and detect anomalous spikes above the threshold.")
+
     anom_plot = df_plot[df_plot.vibration >= vib_threshold]
     fig1 = go.Figure()
-    fig1.add_trace(go.Scatter(x=df_plot.ID, y=df_plot.vibration, mode="lines", name="Vibration",
-        line=dict(color=ORANGE, width=1), fill="tozeroy", fillcolor="rgba(249,115,22,0.07)"))
-    fig1.add_trace(go.Scatter(x=anom_plot.ID, y=anom_plot.vibration, mode="markers",
-        name=f"Anomaly >= {vib_threshold}",
+    fig1.add_trace(go.Scatter(
+        x=df_plot.ID, y=df_plot.vibration,
+        mode="lines", name="Vibration",
+        line=dict(color=ORANGE, width=1),
+        fill="tozeroy", fillcolor="rgba(249,115,22,0.07)"))
+    fig1.add_trace(go.Scatter(
+        x=anom_plot.ID, y=anom_plot.vibration,
+        mode="markers", name=f"Anomaly >= {vib_threshold}",
         marker=dict(color=RED, size=6, symbol="circle-open", line=dict(width=2))))
     fig1.add_hline(y=vib_threshold, line_dash="dot", line_color=RED,
-                   annotation_text=f"Threshold ({vib_threshold})", annotation_font_color="#ffffff")
-    fig1.update_layout(**PLOTLY_LAYOUT, title="Vibration Over Time — Elevator Health Indicator",
-                       xaxis_title="Sample ID (time index)", yaxis_title="Vibration (units)")
+                   annotation_text=f"Threshold ({vib_threshold})",
+                   annotation_font_color="#ffffff")
+    fig1.update_layout(**PLOTLY_LAYOUT,
+                       title="Vibration Over Time — Elevator Health Indicator",
+                       xaxis_title="Sample ID (time index)",
+                       yaxis_title="Vibration (units)")
     st.plotly_chart(fig1, use_container_width=True)
     st.info(f"{len(anomalies):,} of {len(df):,} readings ({len(anomalies)/len(df)*100:.1f}%) exceed threshold {vib_threshold}.")
     st.divider()
 
-    # 2. Histograms
+    # ── Chart 2: Histograms — properly binned ─────────────────────────────────
     st.subheader("2 · Distribution of Humidity & Revolutions")
-    st.write("Check how sensor values are spread — normal range vs extreme values.")
+    st.write(
+        "Humidity ranges narrowly from 72.4% to 75.4% — binned into 20 equal-width buckets to show "
+        "the true distribution. Revolutions range from 16.9 to 93.7 across 30 bins."
+    )
+
     col_a, col_b = st.columns(2)
+
     with col_a:
-        fig2a = go.Figure(go.Histogram(x=df_plot.humidity, nbinsx=30, marker_color=BLUE, opacity=0.85))
-        fig2a.update_layout(**PLOTLY_LAYOUT, title="Humidity Distribution",
-                             xaxis_title="Humidity (%)", yaxis_title="Frequency")
+        # Humidity: fixed bin boundaries from actual min to max
+        hum_min = float(df_plot.humidity.min())
+        hum_max = float(df_plot.humidity.max())
+        hum_bins = np.linspace(hum_min, hum_max, 21)   # 20 equal-width bins
+        hum_counts, hum_edges = np.histogram(df_plot.humidity, bins=hum_bins)
+        hum_centers = (hum_edges[:-1] + hum_edges[1:]) / 2
+
+        fig2a = go.Figure(go.Bar(
+            x=hum_centers,
+            y=hum_counts,
+            width=(hum_edges[1] - hum_edges[0]) * 0.9,
+            marker_color=BLUE,
+            opacity=0.85,
+            name="Humidity",
+        ))
+        fig2a.update_layout(
+            **PLOTLY_LAYOUT,
+            title="Humidity Distribution",
+            xaxis_title="Humidity (%)",
+            yaxis_title="Frequency",
+            xaxis=dict(
+                **PLOTLY_LAYOUT["xaxis"],
+                tickformat=".2f",
+                range=[hum_min - 0.05, hum_max + 0.05],
+            ),
+            bargap=0.05,
+        )
         st.plotly_chart(fig2a, use_container_width=True)
+
     with col_b:
-        fig2b = go.Figure(go.Histogram(x=df_plot.revolutions, nbinsx=30, marker_color=AMBER, opacity=0.85))
-        fig2b.update_layout(**PLOTLY_LAYOUT, title="Revolutions Distribution",
-                             xaxis_title="Revolutions (door cycles)", yaxis_title="Frequency")
+        fig2b = go.Figure(go.Histogram(
+            x=df_plot.revolutions,
+            nbinsx=30,
+            marker_color=AMBER, opacity=0.85, name="Revolutions",
+        ))
+        fig2b.update_layout(
+            **PLOTLY_LAYOUT,
+            title="Revolutions Distribution",
+            xaxis_title="Revolutions (door cycles)",
+            yaxis_title="Frequency",
+            bargap=0.05,
+        )
         st.plotly_chart(fig2b, use_container_width=True)
+
     st.divider()
 
-    # 3. Scatter
-    st.subheader("3 · Revolutions vs Vibration")
+    # ── Chart 3: Vibration Distribution (separate, proper bins) ──────────────
+    st.subheader("3 · Vibration Distribution")
+    st.write(
+        "Vibration is right-skewed — most readings cluster between 2 and 40 units, "
+        "with a long tail of high-stress events up to 100. "
+        "Binned into 50 equal-width buckets across the full range."
+    )
+
+    vib_counts, vib_edges = np.histogram(df_plot.vibration, bins=50)
+    vib_centers = (vib_edges[:-1] + vib_edges[1:]) / 2
+    bar_colors = [RED if c >= vib_threshold else ORANGE for c in vib_centers]
+
+    fig_vib = go.Figure(go.Bar(
+        x=vib_centers,
+        y=vib_counts,
+        width=(vib_edges[1] - vib_edges[0]) * 0.9,
+        marker_color=bar_colors,
+        opacity=0.85,
+        name="Vibration",
+    ))
+    fig_vib.add_vline(x=vib_threshold, line_dash="dot", line_color=RED,
+                      annotation_text=f"Threshold ({vib_threshold})",
+                      annotation_font_color="#ffffff")
+    fig_vib.update_layout(
+        **PLOTLY_LAYOUT,
+        title="Vibration Distribution — Right-Skewed (Mean 28.2, Median 21.3)",
+        xaxis_title="Vibration (units)",
+        yaxis_title="Frequency",
+        bargap=0.05,
+    )
+    st.plotly_chart(fig_vib, use_container_width=True)
+    st.divider()
+
+    # ── Chart 4: Scatter — Revolutions vs Vibration ──────────────────────────
+    st.subheader("4 · Revolutions vs Vibration")
     st.write("Identify if higher door cycles lead to higher vibration levels.")
-    fig3 = px.scatter(df_plot, x="revolutions", y="vibration", color="humidity",
+
+    fig3 = px.scatter(
+        df_plot, x="revolutions", y="vibration", color="humidity",
         color_continuous_scale="Oranges", opacity=0.5,
-        labels={"revolutions":"Revolutions (door cycles)","vibration":"Vibration (units)","humidity":"Humidity (%)"})
+        labels={"revolutions":"Revolutions (door cycles)",
+                "vibration":"Vibration (units)","humidity":"Humidity (%)"},
+    )
     z = np.polyfit(df_plot.revolutions, df_plot.vibration, 1)
     x_line = np.linspace(df_plot.revolutions.min(), df_plot.revolutions.max(), 200)
     fig3.add_trace(go.Scatter(x=x_line, y=np.poly1d(z)(x_line), mode="lines",
@@ -162,9 +254,10 @@ with tab_vis:
     st.plotly_chart(fig3, use_container_width=True)
     st.divider()
 
-    # 4. Box plots (split because x4/x5 have very different scales)
-    st.subheader("4 · Box Plot — Sensor Readings x1 to x5")
-    st.write("Detect outliers and abnormal readings. x4 and x5 are shown separately due to different value scales.")
+    # ── Chart 5: Box Plots — split by scale ───────────────────────────────────
+    st.subheader("5 · Box Plot — Sensor Readings x1 to x5")
+    st.write("x4 and x5 have much larger value ranges so are shown separately from x1, x2, x3.")
+
     col_b1, col_b2 = st.columns(2)
     with col_b1:
         fig4a = go.Figure()
@@ -182,9 +275,10 @@ with tab_vis:
         st.plotly_chart(fig4b, use_container_width=True)
     st.divider()
 
-    # 5. Correlation heatmap
-    st.subheader("5 · Correlation Heatmap")
+    # ── Chart 6: Correlation Heatmap ─────────────────────────────────────────
+    st.subheader("6 · Correlation Heatmap")
     st.write("Find relationships between all variables — which sensors correlate most with vibration.")
+
     corr = df[numeric_cols].corr()
     fig5 = go.Figure(go.Heatmap(
         z=corr.values, x=corr.columns.tolist(), y=corr.index.tolist(),
@@ -196,14 +290,17 @@ with tab_vis:
     ))
     hm_layout = dict(**PLOTLY_LAYOUT)
     hm_layout["xaxis"] = dict(gridcolor="#2a2e3d", linecolor="#2a2e3d",
-                               tickfont=dict(color="#ffffff"), title_font=dict(color="#ffffff"), tickangle=-35)
+                               tickfont=dict(color="#ffffff"),
+                               title_font=dict(color="#ffffff"), tickangle=-35)
     hm_layout["title"] = "Correlation Matrix — All Numeric Features"
     fig5.update_layout(**hm_layout)
     st.plotly_chart(fig5, use_container_width=True)
     vib_corr = corr["vibration"].drop("vibration").sort_values(key=abs, ascending=False)
     st.success(f"Strongest correlation with vibration: {vib_corr.index[0]} (r = {vib_corr.iloc[0]:.3f})")
 
-# ══ TAB 2: Insights ═══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 2 — INSIGHTS
+# ══════════════════════════════════════════════════════════════════════════════
 with tab_insights:
     st.subheader("Key Insights & Recommendations")
     st.write("Stage 4: Findings from the real elevator sensor dataset (112,001 readings at 4 Hz).")
@@ -211,56 +308,44 @@ with tab_insights:
     corr = df[numeric_cols].corr()
     vib_top = corr["vibration"].drop("vibration").sort_values(key=abs, ascending=False)
 
-    # Insight 1 — Humidity is the clearest driver
     st.error("CRITICAL — Insight 1: Humidity is the Strongest Positive Driver of Vibration (r = +0.132)")
     st.write(
         "Although humidity varies narrowly (72.4% to 75.4%), its effect on vibration is clear and consistent. "
         "At low humidity (around 73%), average vibration is 21.9 units. At high humidity (above 74.8%), "
         "average vibration rises to 32.7 units — a 49% increase over that small range. "
-        "Moisture degrades lubricant viscosity and accelerates micro-corrosion in door bearings, "
-        "directly increasing mechanical resistance and vibration. "
-        "Recommendation: install shaft dehumidifiers and increase lubrication frequency during "
-        "high-humidity periods to keep vibration below the alert threshold."
+        "Moisture degrades lubricant viscosity and accelerates micro-corrosion in door bearings. "
+        "Recommendation: install shaft dehumidifiers and increase lubrication frequency during high-humidity periods."
     )
     st.divider()
 
-    # Insight 2 — x4 (pressure sensor) negative correlation
     st.warning("MECHANICAL — Insight 2: Sensor x4 (Pressure) Has the Strongest Overall Correlation (r = -0.141)")
     st.write(
-        "x4 (the pressure sensor) shows the strongest correlation with vibration at r = -0.141 — a negative "
-        "relationship meaning that when pressure readings are lower, vibration tends to be higher. "
-        "In practice this indicates that a drop in door mechanism pressure (loss of hydraulic resistance or "
-        "spring tension) is associated with increased vibration and wear. "
-        "Monitoring x4 alongside vibration gives engineers an earlier warning signal before vibration "
-        "reaches dangerous levels. "
+        "x4 shows the strongest correlation with vibration at r = -0.141 — a negative relationship meaning "
+        "that when pressure readings are lower, vibration tends to be higher. This indicates that a drop in "
+        "door mechanism pressure (loss of hydraulic resistance or spring tension) is associated with increased "
+        "vibration and wear. "
         "Recommendation: flag elevators where x4 drops below 1,000 units for priority inspection."
     )
     st.divider()
 
-    # Insight 3 — Anomalies
-    st.error(f"ANOMALY ALERT — Insight 3: 5,127 Vibration Spikes Detected (4.6% of all 112,001 readings)")
+    st.error(f"ANOMALY ALERT — Insight 3: {len(anomalies):,} Vibration Spikes Detected ({len(anomalies)/len(df)*100:.1f}% of samples)")
     st.write(
-        "Readings at or above 70 vibration units represent severe mechanical stress events. "
-        "The 5,127 anomalous readings show a distinct pattern: they cluster at high revolutions "
-        "(mean 59.5 vs overall mean 46.3), high humidity (mean 74.7%), and elevated x5 values "
-        "(mean 5,582 vs overall mean 5,510). This suggests that anomalies are not random — "
-        "they occur during periods of heavy door usage combined with humid conditions. "
-        "Recommendation: set automated alerts at vibration >= 70 and dispatch technicians same-day "
-        "to prevent escalation to full mechanical failure."
+        "Readings at or above the threshold represent severe mechanical stress events. "
+        "The anomalous readings cluster at high revolutions (mean 59.5 vs overall mean 46.3), "
+        "high humidity (mean 74.7%), and elevated x5 values (mean 5,582 vs overall 5,510). "
+        "This confirms anomalies are condition-driven, not random. "
+        "Recommendation: set automated alerts at vibration >= 70 and dispatch technicians same-day."
     )
     if len(anomalies) > 0:
         st.warning(f"{len(anomalies):,} anomalous readings currently exceed the threshold of {vib_threshold}.")
     st.divider()
 
-    # Insight 4 — x5 positive correlation
-    st.info("MULTI-SENSOR — Insight 4: x5 (Acceleration Sensor) Rises With Vibration (r = +0.132)")
+    st.info(f"MULTI-SENSOR — Insight 4: x5 (Acceleration) Rises With Vibration (r = +0.132)")
     st.write(
-        "x5 shows a positive correlation with vibration (r = +0.132). Elevators in the highest x5 "
-        "quartile have a mean vibration of 33.5 units compared to 25.2 in the lowest quartile. "
-        "This makes x5 a reliable secondary indicator — as the door mechanism accelerates and "
-        "decelerates more aggressively, vibration increases correspondingly. "
-        "Together, x4 and x5 form a two-sensor early warning system: a falling x4 combined with "
-        "a rising x5 reliably precedes high vibration events."
+        "x5 shows a positive correlation with vibration (r = +0.132). Elevators in the highest x5 quartile "
+        "have a mean vibration of 33.5 units compared to 25.2 in the lowest quartile. "
+        "Together, x4 and x5 form a two-sensor early warning system: a falling x4 combined with a rising x5 "
+        "reliably precedes high vibration events."
     )
 
     st.divider()
@@ -289,7 +374,9 @@ with tab_insights:
         ],
     }), use_container_width=True, hide_index=True)
 
-# ══ TAB 3: Raw Data ═══════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 3 — RAW DATA
+# ══════════════════════════════════════════════════════════════════════════════
 with tab_data:
     st.subheader("Dataset Preview")
 
@@ -299,10 +386,9 @@ with tab_data:
     col_info3.metric("Columns", str(df_raw.shape[1]))
 
     st.write(
-        "Dataset columns: ID (sample index), revolutions (door ball-bearing sensor), "
-        "humidity (%), vibration (target — elevator health indicator), "
-        "x1 (temperature), x2 (motor current), x3 (acoustic), x4 (pressure), x5 (acceleration). "
-        "Table is capped at 2,000 rows — download the full filtered dataset below."
+        "Columns: ID (sample index), revolutions (door ball-bearing), humidity (%), "
+        "vibration (target — health indicator), x1 (temperature), x2 (motor current), "
+        "x3 (acoustic), x4 (pressure), x5 (acceleration). Table capped at 2,000 rows."
     )
 
     col1, col2 = st.columns([3, 1])
@@ -320,15 +406,13 @@ with tab_data:
         display_df.style.format(precision=3)
             .highlight_between(subset=["vibration"], left=vib_threshold, right=9999, color="#ffd5cc"),
         use_container_width=True, height=420)
-    st.write(
-        f"Showing {len(display_df):,} rows. "
-        f"Rows highlighted in orange have vibration >= {vib_threshold} (anomaly threshold). "
-        f"In the full dataset, 5,127 rows (4.6%) exceed vibration = 70."
-    )
+    st.write(f"Showing {len(display_df):,} rows. Orange rows have vibration >= {vib_threshold}.")
     st.download_button("⬇️ Download filtered dataset as CSV",
                        df.to_csv(index=False).encode(), "elevator_filtered.csv", "text/csv")
 
-# ══ TAB 4: EDA Summary ════════════════════════════════════════════════════════
+# ══════════════════════════════════════════════════════════════════════════════
+# TAB 4 — EDA SUMMARY
+# ══════════════════════════════════════════════════════════════════════════════
 with tab_eda:
     st.subheader("Stage 2: Data Understanding & Cleaning Report")
 
@@ -343,9 +427,9 @@ with tab_eda:
         st.write(f"- Source: {'Uploaded file' if not using_sample else 'cleaned_missions.csv'}")
     with col_r:
         st.write("**Column Descriptions**")
-        col_desc = pd.DataFrame({
+        st.dataframe(pd.DataFrame({
             "Column": REQUIRED_COLS,
-            "Type":   ["int64","float64","float64","float64","float64","float64","float64","float64","float64"],
+            "Type": ["int64","float64","float64","float64","float64","float64","float64","float64","float64"],
             "Description": [
                 "Sample index (time series)",
                 "Door ball-bearing revolutions",
@@ -357,8 +441,7 @@ with tab_eda:
                 "Pressure sensor",
                 "Acceleration sensor",
             ],
-        })
-        st.dataframe(col_desc, use_container_width=True, hide_index=True)
+        }), use_container_width=True, hide_index=True)
 
     st.write("**Required Columns Check**")
     check_cols = st.columns(len(REQUIRED_COLS))
@@ -366,20 +449,18 @@ with tab_eda:
         check_cols[i].write(f"{'✅' if col in df_raw.columns else '❌'} {col}")
 
     st.divider()
-    st.subheader("Descriptive Statistics — Full Dataset (112,001 rows)")
+    st.subheader("Descriptive Statistics — Full Dataset")
     st.write(
-        "Key observations: vibration ranges from 2 to 100 (mean 28.2, std 24.0) — "
-        "showing high variability. Humidity is very narrow (72.4–75.4%), suggesting "
-        "controlled environment. x4 and x5 have much larger scales than other sensors."
+        "Vibration ranges from 2 to 100 (mean 28.2, std 24.0) — high variability. "
+        "Humidity is very narrow (72.4–75.4%). x4 and x5 have much larger scales than other sensors."
     )
     st.dataframe(df_raw[numeric_cols].describe().T.style.format(precision=3), use_container_width=True)
 
     st.divider()
     st.subheader("Correlation with Target Variable (Vibration)")
     st.write(
-        "All correlations are weak (max |r| = 0.141), which is common in real-world sensor data "
-        "where vibration is influenced by many overlapping factors. x4 (pressure) has the strongest "
-        "negative correlation — lower pressure accompanies higher vibration. "
+        "All correlations are weak (max |r| = 0.141) — normal for real-world sensor data. "
+        "x4 (pressure) has the strongest negative correlation. "
         "Humidity and x5 (acceleration) have the strongest positive correlations."
     )
     vib_corr_series = (df[numeric_cols].corr()["vibration"].drop("vibration")
@@ -391,15 +472,11 @@ with tab_eda:
         text=vib_corr_df["Pearson r"].round(3), textposition="outside",
         textfont=dict(color="#ffffff"),
     ))
-    fig_bar.update_layout(**PLOTLY_LAYOUT, title="Feature Correlation with Vibration (Target Variable)",
+    fig_bar.update_layout(**PLOTLY_LAYOUT,
+                          title="Feature Correlation with Vibration (Target Variable)",
                           xaxis_title="Feature", yaxis_title="Pearson r", showlegend=False)
     st.plotly_chart(fig_bar, use_container_width=True)
-    st.write(
-        "Orange bars = positive correlation (humidity, x5 rise with vibration). "
-        "Blue bars = negative correlation (x4 pressure drops as vibration rises). "
-        "Weak correlations confirm that no single sensor predicts vibration alone — "
-        "a multi-sensor approach is needed."
-    )
+    st.write("Orange = positive correlation. Blue = negative correlation.")
 
 # ── Footer ────────────────────────────────────────────────────────────────────
 st.divider()
