@@ -33,7 +33,7 @@ REQUIRED_COLS = ["ID","revolutions","humidity","vibration","x1","x2","x3","x4","
 @st.cache_data
 def load_bundled_data():
     base = Path(__file__).parent
-    return pd.read_csv(base / "cleaned_missions.csv")
+    return pd.read_csv(base / "cleaned_elevator.csv")
 
 def load_and_validate(file):
     try:
@@ -87,8 +87,6 @@ numeric_cols = ["revolutions","humidity","vibration","x1","x2","x3","x4","x5"]
 
 st.title("🏢 TechLift Solutions")
 src = "Bundled dataset (112,001 rows)" if using_sample else "Uploaded file"
-st.write(f"Smart Elevator Movement Visualization  |  Predictive Maintenance  |  **{len(df):,}** samples  |  {src}")
-st.divider()
 if using_sample:
     st.info("Loaded with the real elevator sensor dataset (112,001 rows). Upload a different file in the sidebar if needed.", icon="ℹ️")
 
@@ -449,7 +447,7 @@ with tab_eda:
         st.write(f"- Missing values: {df_raw.isnull().sum().sum()} — dataset is complete ✅")
         st.write(f"- Duplicate rows: {df_raw.duplicated().sum()} — all samples unique ✅")
         st.write("- All numeric columns: correctly typed as float64 / int64 ✅")
-        st.write(f"- Source: {'Uploaded file' if not using_sample else 'cleaned_missions.csv'}")
+        st.write(f"- Source: {'Uploaded file' if not using_sample else 'cleaned_elevator.csv'}")
     with col_r:
         st.write("**Column Descriptions**")
         st.dataframe(pd.DataFrame({
