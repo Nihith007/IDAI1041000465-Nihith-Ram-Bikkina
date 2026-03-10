@@ -325,8 +325,8 @@ with tab_vis:
         line=dict(color=RED, width=2, dash="dash"),
         name="Trend line",
     ))
+    fig3.update_layout(**PLOTLY_LAYOUT)
     fig3.update_layout(
-        **PLOTLY_LAYOUT,
         title="Revolutions vs Vibration (coloured by Humidity)",
         coloraxis_colorbar=dict(
             title="Humidity %",
