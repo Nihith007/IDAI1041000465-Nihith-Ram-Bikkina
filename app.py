@@ -4,6 +4,7 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 from pathlib import Path
+from scipy import stats
 
 st.set_page_config(
     page_title="TechLift – Elevator Vibration Analysis",
@@ -143,91 +144,123 @@ with tab_vis:
     st.info(f"{len(anomalies):,} of {len(df):,} readings ({len(anomalies)/len(df)*100:.1f}%) exceed threshold {vib_threshold}.")
     st.divider()
 
-    # ── Chart 2: Histograms — properly binned ─────────────────────────────────
+    # ── Chart 2: Humidity & Revolutions — KDE density curves ────────────────
     st.subheader("2 · Distribution of Humidity & Revolutions")
     st.write(
-        "Humidity ranges narrowly from 72.4% to 75.4% — binned into 20 equal-width buckets to show "
-        "the true distribution. Revolutions range from 16.9 to 93.7 across 30 bins."
+        "Smooth density curves (KDE) show the true shape of each distribution. "
+        "Humidity peaks around 74.1% — the most common operating condition. "
+        "Revolutions show a bimodal pattern reflecting two distinct door usage levels."
     )
 
     col_a, col_b = st.columns(2)
 
     with col_a:
-        # Humidity: fixed bin boundaries from actual min to max
-        hum_min = float(df_plot.humidity.min())
-        hum_max = float(df_plot.humidity.max())
-        hum_bins = np.linspace(hum_min, hum_max, 21)   # 20 equal-width bins
-        hum_counts, hum_edges = np.histogram(df_plot.humidity, bins=hum_bins)
-        hum_centers = (hum_edges[:-1] + hum_edges[1:]) / 2
+        # KDE curve for humidity
+        hum_vals = df_plot.humidity.dropna().values
+        kde_hum  = stats.gaussian_kde(hum_vals, bw_method=0.15)
+        x_hum    = np.linspace(hum_vals.min() - 0.1, hum_vals.max() + 0.1, 400)
+        y_hum    = kde_hum(x_hum)
 
-        fig2a = go.Figure(go.Bar(
-            x=hum_centers,
-            y=hum_counts,
-            width=(hum_edges[1] - hum_edges[0]) * 0.9,
-            marker_color=BLUE,
-            opacity=0.85,
+        fig2a = go.Figure()
+        fig2a.add_trace(go.Scatter(
+            x=x_hum, y=y_hum,
+            mode="lines",
             name="Humidity",
+            line=dict(color=BLUE, width=2.5),
+            fill="tozeroy",
+            fillcolor="rgba(59,130,246,0.2)",
         ))
         fig2a.update_layout(
             **PLOTLY_LAYOUT,
-            title="Humidity Distribution",
+            title=f"Humidity Density — Range {hum_vals.min():.1f}% to {hum_vals.max():.1f}%",
             xaxis_title="Humidity (%)",
-            yaxis_title="Frequency",
+            yaxis_title="Density",
             xaxis=dict(
                 **PLOTLY_LAYOUT["xaxis"],
-                tickformat=".2f",
-                range=[hum_min - 0.05, hum_max + 0.05],
+                tickformat=".1f",
             ),
-            bargap=0.05,
         )
         st.plotly_chart(fig2a, use_container_width=True)
 
     with col_b:
-        fig2b = go.Figure(go.Histogram(
-            x=df_plot.revolutions,
-            nbinsx=30,
-            marker_color=AMBER, opacity=0.85, name="Revolutions",
+        # KDE curve for revolutions
+        rev_vals = df_plot.revolutions.dropna().values
+        kde_rev  = stats.gaussian_kde(rev_vals, bw_method=0.15)
+        x_rev    = np.linspace(rev_vals.min() - 2, rev_vals.max() + 2, 400)
+        y_rev    = kde_rev(x_rev)
+
+        fig2b = go.Figure()
+        fig2b.add_trace(go.Scatter(
+            x=x_rev, y=y_rev,
+            mode="lines",
+            name="Revolutions",
+            line=dict(color=AMBER, width=2.5),
+            fill="tozeroy",
+            fillcolor="rgba(245,158,11,0.2)",
         ))
         fig2b.update_layout(
             **PLOTLY_LAYOUT,
-            title="Revolutions Distribution",
+            title=f"Revolutions Density — Range {rev_vals.min():.1f} to {rev_vals.max():.1f}",
             xaxis_title="Revolutions (door cycles)",
-            yaxis_title="Frequency",
-            bargap=0.05,
+            yaxis_title="Density",
         )
         st.plotly_chart(fig2b, use_container_width=True)
 
     st.divider()
 
-    # ── Chart 3: Vibration Distribution (separate, proper bins) ──────────────
+    # ── Chart 3: Vibration Distribution — KDE + histogram overlay ───────────
     st.subheader("3 · Vibration Distribution")
     st.write(
-        "Vibration is right-skewed — most readings cluster between 2 and 40 units, "
-        "with a long tail of high-stress events up to 100. "
-        "Binned into 50 equal-width buckets across the full range."
+        "Vibration is strongly right-skewed — 75% of readings are below 38.8 units, "
+        "but a long tail extends to 100. The orange region is normal operation; "
+        "red marks the anomaly zone above the threshold."
     )
 
-    vib_counts, vib_edges = np.histogram(df_plot.vibration, bins=50)
-    vib_centers = (vib_edges[:-1] + vib_edges[1:]) / 2
-    bar_colors = [RED if c >= vib_threshold else ORANGE for c in vib_centers]
+    vib_vals = df_plot.vibration.dropna().values
 
-    fig_vib = go.Figure(go.Bar(
+    # Histogram bars coloured by threshold
+    vib_counts, vib_edges = np.histogram(vib_vals, bins=40)
+    vib_centers = (vib_edges[:-1] + vib_edges[1:]) / 2
+    bar_colors  = [RED if c >= vib_threshold else ORANGE for c in vib_centers]
+
+    # KDE overlay
+    kde_vib = stats.gaussian_kde(vib_vals, bw_method=0.2)
+    x_kde   = np.linspace(vib_vals.min(), vib_vals.max(), 400)
+    # Scale KDE to match histogram counts
+    bin_width  = vib_edges[1] - vib_edges[0]
+    y_kde_scaled = kde_vib(x_kde) * len(vib_vals) * bin_width
+
+    fig_vib = go.Figure()
+    fig_vib.add_trace(go.Bar(
         x=vib_centers,
         y=vib_counts,
-        width=(vib_edges[1] - vib_edges[0]) * 0.9,
+        width=bin_width * 0.9,
         marker_color=bar_colors,
-        opacity=0.85,
-        name="Vibration",
+        opacity=0.7,
+        name="Count",
     ))
-    fig_vib.add_vline(x=vib_threshold, line_dash="dot", line_color=RED,
-                      annotation_text=f"Threshold ({vib_threshold})",
-                      annotation_font_color="#ffffff")
+    fig_vib.add_trace(go.Scatter(
+        x=x_kde, y=y_kde_scaled,
+        mode="lines",
+        name="Density curve",
+        line=dict(color="#ffffff", width=2),
+    ))
+    fig_vib.add_vline(
+        x=vib_threshold, line_dash="dot", line_color=RED,
+        annotation_text=f"Alert threshold ({vib_threshold})",
+        annotation_font_color="#ffffff",
+    )
+    fig_vib.add_vline(
+        x=float(df_plot.vibration.mean()), line_dash="dash", line_color=AMBER,
+        annotation_text=f"Mean ({df_plot.vibration.mean():.1f})",
+        annotation_font_color=AMBER,
+    )
     fig_vib.update_layout(
         **PLOTLY_LAYOUT,
-        title="Vibration Distribution — Right-Skewed (Mean 28.2, Median 21.3)",
+        title="Vibration Distribution — Right-Skewed with Anomaly Zone",
         xaxis_title="Vibration (units)",
-        yaxis_title="Frequency",
-        bargap=0.05,
+        yaxis_title="Count",
+        barmode="overlay",
     )
     st.plotly_chart(fig_vib, use_container_width=True)
     st.divider()
