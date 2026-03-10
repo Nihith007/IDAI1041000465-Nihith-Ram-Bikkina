@@ -337,20 +337,39 @@ with tab_vis:
     st.subheader("4 · Revolutions vs Vibration")
     st.write("Each point is one reading coloured by humidity. Dashed red trend line shows the relationship (r = -0.114).")
 
-    fig4 = px.scatter(df_plot, x="revolutions", y="vibration", color="humidity",
-        color_continuous_scale="Oranges", opacity=0.4,
-        labels={"revolutions":"Revolutions (door cycles)",
-                "vibration":"Vibration (units)", "humidity":"Humidity (%)"})
+    # Build scatter purely with go.Scatter — no px to avoid line artefacts
     z = np.polyfit(df_plot.revolutions, df_plot.vibration, 1)
     x_line = np.linspace(df_plot.revolutions.min(), df_plot.revolutions.max(), 200)
-    fig4.add_trace(go.Scatter(x=x_line, y=np.poly1d(z)(x_line), mode="lines",
-        name="Trend line", line=dict(color=RED, width=2, dash="dash")))
+
+    fig4 = go.Figure()
+    fig4.add_trace(go.Scatter(
+        x=df_plot["revolutions"], y=df_plot["vibration"],
+        mode="markers",
+        marker=dict(
+            color=df_plot["humidity"],
+            colorscale="Oranges",
+            opacity=0.5,
+            size=4,
+            colorbar=dict(
+                title="Humidity %",
+                tickfont=dict(color="#ffffff"),
+                title_font=dict(color="#ffffff"),
+            ),
+        ),
+        name="Sensor readings",
+        showlegend=False,
+    ))
+    fig4.add_trace(go.Scatter(
+        x=x_line, y=np.poly1d(z)(x_line),
+        mode="lines", name="Trend line",
+        line=dict(color=RED, width=2, dash="dash")))
     fig4.add_hline(y=vib_threshold, line_dash="dot", line_color=RED,
         annotation_text=f"Alert threshold ({vib_threshold})", annotation_font_color=RED)
-    fig4.update_layout(layout(title="Revolutions vs Vibration (coloured by Humidity)"))
-    fig4.update_coloraxes(colorbar_title_text="Humidity %",
-                          colorbar_tickfont_color="#ffffff",
-                          colorbar_title_font_color="#ffffff")
+    fig4.update_layout(layout(
+        title="Revolutions vs Vibration (coloured by Humidity)",
+        xaxis_title="Revolutions (door cycles)",
+        yaxis_title="Vibration (units)",
+    ))
     st.plotly_chart(fig4, use_container_width=True)
     st.divider()
 
