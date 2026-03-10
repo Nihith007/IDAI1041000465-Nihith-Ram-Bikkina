@@ -392,7 +392,7 @@ with tab_vis:
         textfont=dict(size=11, color="#ffffff"),
         colorbar=dict(
             tickfont=dict(color="#ffffff"),
-            titlefont=dict(color="#ffffff"),
+            title_font=dict(color="#ffffff"),
         ),
     ))
 
